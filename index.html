@@ -102,10 +102,10 @@ makeWall(ROOM_DEPTH, ROOM_HEIGHT, new THREE.Vector3(ROOM_WIDTH / 2, ROOM_HEIGHT 
 // ----- Bilderrahmen mit Videos -----
 // Liste deiner Videoquellen hier eintragen (Pfade oder URLs zu mp4-Dateien).
 const videoSources = [
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/coffee.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/friday.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flame.mp4',
 ];
 
 const FRAME_WIDTH = 3;
@@ -124,6 +124,9 @@ function createVideoFrame(src) {
   video.loop = true;
   video.muted = true;
   video.playsInline = true;
+  video.addEventListener('error', () => {
+    console.error('Video konnte nicht geladen werden:', src, video.error);
+  });
   videoElements.push(video);
 
   const texture = new THREE.VideoTexture(video);
