@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>3D Ausstellungsraum</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #111; }
+  canvas { display: block; }
+  #info {
+    position: absolute; top: 10px; left: 10px; color: #fff;
+    font-family: sans-serif; font-size: 14px; background: rgba(0,0,0,0.5);
+    padding: 8px 12px; border-radius: 6px; user-select: none; pointer-events: none;
+  }
+  #blocker {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); display: flex; align-items: center;
+    justify-content: center; color: #fff; font-family: sans-serif;
+    font-size: 20px; cursor: pointer; text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="info">WASD: Bewegen | Maus: Umschauen | ESC: Maus freigeben</div>
+<div id="blocker"><div>Klicken, um den Raum zu betreten</div></div>
+
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { PointerLockControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/PointerLockControls.js';
+
+// ----- Grundlagen -----
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x202025);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 1.7, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ----- Licht -----
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 5);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+// ----- Raum -----
+const ROOM_WIDTH = 20;
+const ROOM_DEPTH = 20;
+const ROOM_HEIGHT = 5;
+
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+ceiling.rotation.x = Math.PI / 2;
+ceiling.position.y = ROOM_HEIGHT;
+scene.add(ceiling);
+
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.95 });
+
+function makeWall(width, height, position, rotationY) {
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, height), wallMat);
+  wall.position.copy(position);
+  wall.rotation.y = rotationY;
+  wall.receiveShadow = true;
+  scene.add(wall);
+  return wall;
+}
+
+// Nord (hinten), Süd (vorne), Ost, West
+makeWall(ROOM_WIDTH, ROOM_HEIGHT, new THREE.Vector3(0, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2), 0);
+makeWall(ROOM_WIDTH, ROOM_HEIGHT, new THREE.Vector3(0, ROOM_HEIGHT / 2, ROOM_DEPTH / 2), Math.PI);
+makeWall(ROOM_DEPTH, ROOM_HEIGHT, new THREE.Vector3(-ROOM_WIDTH / 2, ROOM_HEIGHT / 2, 0), Math.PI / 2);
+makeWall(ROOM_DEPTH, ROOM_HEIGHT, new THREE.Vector3(ROOM_WIDTH / 2, ROOM_HEIGHT / 2, 0), -Math.PI / 2);
+
+// ----- Bilderrahmen mit Videos -----
+// Liste deiner Videoquellen hier eintragen (Pfade oder URLs zu mp4-Dateien).
+const videoSources = [
+  'videos/video1.mp4',
+  'videos/video2.mp4',
+  'videos/video3.mp4',
+  'videos/video4.mp4',
+];
+
+const FRAME_WIDTH = 3;
+const FRAME_HEIGHT = 1.8;
+const FRAME_DEPTH = 0.1;
+const FRAME_BORDER = 0.15;
+const FRAME_Y = ROOM_HEIGHT / 2;
+
+const videoElements = [];
+
+function createVideoFrame(src) {
+  const video = document.createElement('video');
+  video.src = src;
+  video.crossOrigin = 'anonymous';
+  video.loop = true;
+  video.muted = true;
+  video.playsInline = true;
+  videoElements.push(video);
+
+  const texture = new THREE.VideoTexture(video);
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const group = new THREE.Group();
+
+  // Rahmen (etwas größer, dunkles Holz)
+  const frameGeo = new THREE.BoxGeometry(FRAME_WIDTH + FRAME_BORDER * 2, FRAME_HEIGHT + FRAME_BORDER * 2, FRAME_DEPTH);
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x3b2a1a, roughness: 0.6 });
+  const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+  frameMesh.castShadow = true;
+  group.add(frameMesh);
+
+  // Bildschirm/Video-Plane
+  const screenGeo = new THREE.PlaneGeometry(FRAME_WIDTH, FRAME_HEIGHT);
+  const screenMat = new THREE.MeshBasicMaterial({ map: texture });
+  const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+  screenMesh.position.z = FRAME_DEPTH / 2 + 0.01;
+  group.add(screenMesh);
+
+  return { group, video };
+}
+
+function placeFrame(src, position, rotationY) {
+  const { group, video } = createVideoFrame(src);
+  group.position.copy(position);
+  group.rotation.y = rotationY;
+  scene.add(group);
+  return video;
+}
+
+const offset = 0.08; // minimaler Abstand vor der Wand
+const framePositions = [
+  { pos: new THREE.Vector3(-4, FRAME_Y, -ROOM_DEPTH / 2 + offset), rot: 0, src: videoSources[0] },
+  { pos: new THREE.Vector3(4, FRAME_Y, -ROOM_DEPTH / 2 + offset), rot: 0, src: videoSources[1] },
+  { pos: new THREE.Vector3(-ROOM_WIDTH / 2 + offset, FRAME_Y, 0), rot: Math.PI / 2, src: videoSources[2] },
+  { pos: new THREE.Vector3(ROOM_WIDTH / 2 - offset, FRAME_Y, 0), rot: -Math.PI / 2, src: videoSources[3] },
+];
+
+framePositions.forEach(({ pos, rot, src }) => placeFrame(src, pos, rot));
+
+// ----- Steuerung -----
+const controls = new PointerLockControls(camera, document.body);
+const blocker = document.getElementById('blocker');
+
+blocker.addEventListener('click', () => {
+  controls.lock();
+  // Videos starten, sobald der Nutzer interagiert hat (Browser-Autoplay-Policy)
+  videoElements.forEach(v => v.play().catch(() => {}));
+});
+
+controls.addEventListener('lock', () => { blocker.style.display = 'none'; });
+controls.addEventListener('unlock', () => { blocker.style.display = 'flex'; });
+
+scene.add(controls.getObject());
+
+const move = { forward: false, backward: false, left: false, right: false };
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+
+document.addEventListener('keydown', (e) => {
+  switch (e.code) {
+    case 'KeyW': case 'ArrowUp': move.forward = true; break;
+    case 'KeyS': case 'ArrowDown': move.backward = true; break;
+    case 'KeyA': case 'ArrowLeft': move.left = true; break;
+    case 'KeyD': case 'ArrowRight': move.right = true; break;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  switch (e.code) {
+    case 'KeyW': case 'ArrowUp': move.forward = false; break;
+    case 'KeyS': case 'ArrowDown': move.backward = false; break;
+    case 'KeyA': case 'ArrowLeft': move.left = false; break;
+    case 'KeyD': case 'ArrowRight': move.right = false; break;
+  }
+});
+
+const MOVE_SPEED = 5.0;
+const DAMPING = 8.0;
+const PLAYER_RADIUS = 0.4;
+const clock = new THREE.Clock();
+
+function clampToRoom(position) {
+  const limX = ROOM_WIDTH / 2 - PLAYER_RADIUS;
+  const limZ = ROOM_DEPTH / 2 - PLAYER_RADIUS;
+  position.x = Math.max(-limX, Math.min(limX, position.x));
+  position.z = Math.max(-limZ, Math.min(limZ, position.z));
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.1);
+
+  velocity.x -= velocity.x * DAMPING * delta;
+  velocity.z -= velocity.z * DAMPING * delta;
+
+  direction.z = Number(move.forward) - Number(move.backward);
+  direction.x = Number(move.right) - Number(move.left);
+  direction.normalize();
+
+  if (move.forward || move.backward) velocity.z -= direction.z * MOVE_SPEED * delta;
+  if (move.left || move.right) velocity.x -= direction.x * MOVE_SPEED * delta;
+
+  controls.moveRight(-velocity.x * delta);
+  controls.moveForward(-velocity.z * delta);
+
+  clampToRoom(controls.getObject().position);
+  controls.getObject().position.y = 1.7;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+</script>
+</body>
+</html>
